@@ -3,7 +3,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const md5 = require("md5");
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 
 const port = process.env.PORT || 3000;
 
@@ -53,17 +54,23 @@ app.get("/register", (req, res) => {
 app.post("/register", (req, res) => {
   const { username, password } = req.body;
 
-  const newUser = new User({
-    email: username,
-    password: md5(password),
-  });
-
-  newUser.save((err) => {
+  bcrypt.hash(password, saltRounds, (err, hash) => {
     if (err) {
       return console.error(err);
     }
-    //secrets only rendered if registered or logged in
-    res.render("secrets");
+
+    const newUser = new User({
+      email: username,
+      password: hash,
+    });
+
+    newUser.save((err) => {
+      if (err) {
+        return console.error(err);
+      }
+      //secrets only rendered if registered or logged in
+      res.render("secrets");
+    });
   });
 });
 
@@ -77,11 +84,17 @@ app.post("/login", (req, res) => {
     }
 
     if (foundUser) {
-      if (foundUser.password === md5(password)) {
-        res.render("secrets");
-      } else {
-        res.send("Password is not a match for this account.");
-      }
+      bcrypt.compare(password, foundUser.password, (err, result) => {
+        if (err) {
+          return console.error(err);
+        }
+
+        if (result) {
+          res.render("secrets");
+        } else {
+          res.send("Incorrect password.");
+        }
+      });
     } else {
       res.send("User not found.");
     }
