@@ -1,9 +1,9 @@
-require('dotenv').config();
+require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const md5 = require("md5");
 
 const port = process.env.PORT || 3000;
 
@@ -34,9 +34,6 @@ const userSchema = new mongoose.Schema({
   password: String,
 });
 
-//do below before calling new mongoose.model(), note enviroment var SECRET
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ['password'] });
-
 const User = new mongoose.model("User", userSchema);
 
 //route handlers
@@ -58,7 +55,7 @@ app.post("/register", (req, res) => {
 
   const newUser = new User({
     email: username,
-    password: password,
+    password: md5(password),
   });
 
   newUser.save((err) => {
@@ -80,7 +77,7 @@ app.post("/login", (req, res) => {
     }
 
     if (foundUser) {
-      if (foundUser.password === password) {
+      if (foundUser.password === md5(password)) {
         res.render("secrets");
       } else {
         res.send("Password is not a match for this account.");
@@ -97,4 +94,6 @@ app.listen(port, () => {
 
 /*
 Because many plugins rely on middleware, you should make sure to apply plugins before you call mongoose.model() or conn.model(). Otherwise, any middleware the plugin registers won't get applied.
+//do below before calling new mongoose.model(), note enviroment var SECRET
+userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ['password'] });
 */
