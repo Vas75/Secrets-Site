@@ -50,6 +50,7 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String,
   googleId: String,
+  secret: String,
 });
 
 //below used to hash/salt passwords, save users to mongodb
@@ -115,13 +116,43 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
-//if authenticated/logged in, go to secrets, els loggin page
+//not privledged, anyone can see the secrets
 app.get("/secrets", (req, res) => {
+  //searches for secrets field, with val not null
+  User.find({ secret: {$ne: null} }, (err, foundUsers) => {
+    if (err) {
+      return console.log(err);
+    }
+   
+    res.render("secrets", { usersWithSecrets: foundUsers });
+  });
+});
+
+app.get("/submit", (req, res) => {
   if (req.isAuthenticated()) {
-    res.render("secrets");
+    res.render("submit");
   } else {
     res.redirect("/login");
   }
+});
+
+app.post("/submit", (req, res) => {
+  const submittedSecret = req.body.secret;
+
+  //when you init a login session, passport saves user details in req variable, handy to query for them
+  User.findById(req.user._id, (err, foundUser) => {
+    if (err) {
+      console.log(err);
+      res.end();
+    } else {
+      if (foundUser) {
+        foundUser.secret = submittedSecret;
+        foundUser.save(() => {
+          res.redirect("/secrets");
+        });
+      }
+    }
+  });
 });
 
 app.get("/logout", (req, res) => {
