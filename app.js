@@ -6,6 +6,8 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
+const findOrCreate = require("mongoose-findorcreate");
 
 const port = process.env.PORT || 3000;
 
@@ -47,21 +49,63 @@ db.once("open", function () {
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
+  googleId: String,
 });
 
 //below used to hash/salt passwords, save users to mongodb
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 const User = new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+
+passport.serializeUser(function (user, done) {
+  done(null, user.id);
+});
+
+passport.deserializeUser(function (id, done) {
+  User.findById(id, function (err, user) {
+    done(err, user);
+  });
+});
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.CLIENT_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/google/secrets",
+    },
+    //google invokes this cb with user data after they are authenticated on googles servers
+    function (accessToken, refreshToken, profile, cb) {
+      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        return cb(err, user);
+      });
+    }
+  )
+);
 
 //route handlers
 app.get("/", (req, res) => {
   res.render("home");
 });
+
+//rte for auth via google, note use of google strategy, vs local strat, no req/res callback used, wont work
+//init when user clicks the register via google btn
+app
+  .route("/auth/google")
+  .get(passport.authenticate("google", { scope: ["profile"] }));
+
+//rte google will use after authen. the user on there side, we do local authen, and save thier login session
+app.get(
+  "/auth/google/secrets",
+  passport.authenticate("google", { failureRedirect: "/login" }),
+  function (req, res) {
+    // Successful authentication, redirect secrets.
+    res.redirect("/secrets");
+  }
+);
 
 app.get("/login", (req, res) => {
   res.render("login");
@@ -80,11 +124,11 @@ app.get("/secrets", (req, res) => {
   }
 });
 
-app.get('/logout', (req,res)=>{
+app.get("/logout", (req, res) => {
   //here we deauthenticate user and end session
   req.logout();
-  res.redirect('/');
-} )
+  res.redirect("/");
+});
 
 //rte to register users, then sends to secrets page
 app.post("/register", (req, res) => {
@@ -95,6 +139,7 @@ app.post("/register", (req, res) => {
       console.log(err);
       res.redirect("/register");
     } else {
+      //note use of local strat, vs google strat
       passport.authenticate("local")(req, res, () => {
         res.redirect("/secrets");
       });
